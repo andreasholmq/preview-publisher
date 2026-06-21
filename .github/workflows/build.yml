@@ -1,0 +1,55 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test-and-image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.0"
+          cache: true
+
+      - name: Test
+        run: go test ./...
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Join Tailscale
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+
+      - name: Log in to Zot
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: zot.polecat-polaris.ts.net
+          username: ${{ secrets.ZOT_USERNAME }}
+          password: ${{ secrets.ZOT_PASSWORD }}
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: |
+            zot.polecat-polaris.ts.net/preview-publisher:main
+            zot.polecat-polaris.ts.net/preview-publisher:${{ github.sha }}
+

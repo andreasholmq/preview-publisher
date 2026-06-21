@@ -1,0 +1,15 @@
+.git
+.env
+.env.*
+data
+tmp
+preview
+preview-gateway
+*.test
+coverage.out
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.log

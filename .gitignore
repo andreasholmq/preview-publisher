@@ -1,0 +1,30 @@
+/data/
+/tmp/
+/preview
+/preview-gateway
+*.test
+coverage.out
+
+# Local environment and secrets.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+secrets/
+
+# Runtime data and logs.
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.log
+
+# Local editor and OS files.
+.DS_Store
+.idea/
+.vscode/

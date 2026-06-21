@@ -1,0 +1,22 @@
+services:
+  preview-publisher:
+    image: zot.polecat-polaris.ts.net/preview-publisher:main
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      PREVIEW_LISTEN_ADDR: 0.0.0.0:8080
+      PREVIEW_PUBLIC_BASE_URL: https://example.com
+      PREVIEW_PUBLIC_ROUTE_PREFIX: /p
+      PREVIEW_ADMIN_BASE_URL: https://previews.example.com
+      PREVIEW_DATA_DIR: /data
+      PREVIEW_ADMIN_TOKEN: change-me-change-me-change-me-change-me
+      PREVIEW_MAX_UPLOAD_MB: "200"
+      PREVIEW_MAX_FILE_COUNT: "20000"
+      PREVIEW_STORAGE_DRIVER: filesystem
+      PREVIEW_LOG_LEVEL: info
+    volumes:
+      - preview-publisher-data:/data
+
+volumes:
+  preview-publisher-data:
