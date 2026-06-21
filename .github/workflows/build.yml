@@ -48,8 +48,13 @@ jobs:
         with:
           context: .
           platforms: linux/amd64
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          load: true
           tags: |
             zot.polecat-polaris.ts.net/preview-publisher:main
             zot.polecat-polaris.ts.net/preview-publisher:${{ github.sha }}
 
+      - name: Push image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          docker push zot.polecat-polaris.ts.net/preview-publisher:main
+          docker push zot.polecat-polaris.ts.net/preview-publisher:${{ github.sha }}
