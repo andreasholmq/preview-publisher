@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"path/filepath"
 	"time"
@@ -61,8 +63,23 @@ func (d *DB) Close() error {
 	return d.db.Close()
 }
 
+func appendUsage(ctx context.Context, tx *sql.Tx, action string, when time.Time) error {
+	var id [16]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, `INSERT INTO usage_outbox(event_id,occurred_at,action) VALUES (?,?,?)`, hex.EncodeToString(id[:]), when.Format(time.RFC3339Nano), action)
+	return err
+}
+
 func migrate(db *sql.DB) error {
 	_, err := db.Exec(`
+create table if not exists usage_outbox (
+ seq integer primary key autoincrement,
+ event_id text unique not null,
+ occurred_at text not null,
+ action text not null check(action in ('publish','delete','password_change'))
+);
 create table if not exists previews (
   slug text primary key,
   title text,
@@ -149,6 +166,9 @@ where slug = ?
 	if err != nil {
 		return UpsertResult{}, err
 	}
+	if err := appendUsage(ctx, tx, "publish", now); err != nil {
+		return UpsertResult{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return UpsertResult{}, err
 	}
@@ -160,7 +180,12 @@ where slug = ?
 }
 
 func (d *DB) Delete(ctx context.Context, slug string) (bool, error) {
-	result, err := d.db.ExecContext(ctx, `delete from previews where slug = ?`, slug)
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `delete from previews where slug = ?`, slug)
 	if err != nil {
 		return false, err
 	}
@@ -168,11 +193,24 @@ func (d *DB) Delete(ctx context.Context, slug string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	if affected > 0 {
+		if err := appendUsage(ctx, tx, "delete", time.Now().UTC()); err != nil {
+			return false, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
 	return affected > 0, nil
 }
 
 func (d *DB) SetPassword(ctx context.Context, slug, hash string) (bool, error) {
-	result, err := d.db.ExecContext(ctx, `
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `
 update previews
 set password_hash = ?, updated_at = ?
 where slug = ?
@@ -184,11 +222,24 @@ where slug = ?
 	if err != nil {
 		return false, err
 	}
+	if affected > 0 {
+		if err := appendUsage(ctx, tx, "password_change", time.Now().UTC()); err != nil {
+			return false, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
 	return affected > 0, nil
 }
 
 func (d *DB) ClearPassword(ctx context.Context, slug string) (bool, error) {
-	result, err := d.db.ExecContext(ctx, `
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `
 update previews
 set password_hash = null, updated_at = ?
 where slug = ?
@@ -198,6 +249,14 @@ where slug = ?
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {
+		return false, err
+	}
+	if affected > 0 {
+		if err := appendUsage(ctx, tx, "password_change", time.Now().UTC()); err != nil {
+			return false, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		return false, err
 	}
 	return affected > 0, nil

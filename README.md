@@ -67,3 +67,13 @@ go test ./...
 go build ./cmd/preview-gateway
 go build ./cmd/preview
 ```
+
+## Operational usage receipts
+
+Publish, replacement, deletion and password metadata operations append a minimal
+receipt in the same SQLite transaction as their metadata change. The outbox
+contains a random event ID, UTC occurrence time and a bounded action only; it
+contains no slug, title, URL, password or file content. Successful publish and
+replacement receipts remain available after a preview is deleted. Homelab reads
+the approved projection from the local database; it never derives publish usage
+from current preview stock. Failed receipt writes roll back metadata changes.
