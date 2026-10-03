@@ -18,17 +18,87 @@ jobs:
   publish:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 35
+    concurrency:
+      group: publish-preview-publisher
+      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
-    uses: andreasholmq/homelab/.github/workflows/publish-first-party-app.yml@main
-    with:
-      app-name: preview-publisher
-      source-sha: ${{ github.sha }}
-      dokploy-compose-id: zy25WpN3zG9QspfrQAYBn
-      infisical-identity-id: ${{ vars.INFISICAL_RELEASE_IDENTITY_ID }}
-      infisical-project-slug: release-preview-publisher
-      tailscale-client-id: ${{ vars.TAILSCALE_RELEASE_CLIENT_ID }}
-      tailscale-audience: ${{ vars.TAILSCALE_RELEASE_AUDIENCE }}
-      deploy: false
-      worker-required: false
+    env:
+      REGISTRY: zot.polecat-polaris.ts.net
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Reject an obsolete source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api repos/${{ github.repository }}/commits/main --jq .sha)" = "$GITHUB_SHA"
+      - name: Join the tailnet with GitHub OIDC
+        uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8 # v4
+        with:
+          oauth-client-id: ${{ vars.TAILSCALE_RELEASE_CLIENT_ID }}
+          audience: ${{ vars.TAILSCALE_RELEASE_AUDIENCE }}
+          tags: tag:github-release
+          version: 1.102.4
+          hostname: release-preview-publisher-${{ github.run_id }}
+          ping: zot.polecat-polaris.ts.net,infisical.polecat-polaris.ts.net
+      - name: Resolve private service names
+        run: |
+          set -euo pipefail
+          for host in zot.polecat-polaris.ts.net infisical.polecat-polaris.ts.net; do
+            ip="$(getent ahostsv4 "$host" | awk '{print $1; exit}' || true)"
+            if [ -z "$ip" ]; then
+              ip="$(tailscale ip -4 "$host" 2>/dev/null | head -n 1 || true)"
+            fi
+            test -n "$ip"
+            echo "$ip $host" | sudo tee -a /etc/hosts >/dev/null
+          done
+      - name: Fetch short-lived publisher credentials
+        uses: Infisical/secrets-action@d2e351f16c6ca20d17c85e6c992e04bdeb64e87d # v1.0.18
+        with:
+          method: oidc
+          identity-id: ${{ vars.INFISICAL_RELEASE_IDENTITY_ID }}
+          oidc-audience: infisical
+          domain: https://infisical.polecat-polaris.ts.net
+          project-slug: release-preview-publisher
+          env-slug: prod
+          secret-path: /
+          recursive: false
+      - name: Validate and mask credentials
+        run: |
+          set -euo pipefail
+          for name in ZOT_USERNAME ZOT_PASSWORD; do
+            test -n "${!name:-}"
+            echo "::add-mask::${!name}"
+          done
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        with:
+          driver-opts: network=host
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.ZOT_USERNAME }}
+          password: ${{ env.ZOT_PASSWORD }}
+      - name: Publish the tested immutable image
+        id: image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          sbom: false
+          outputs: type=image,push=true,oci-mediatypes=false
+          tags: ${{ env.REGISTRY }}/preview-publisher:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Record publication
+        env:
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          echo "Published preview-publisher:$GITHUB_SHA ($DIGEST). Homelab owns deployment of this immutable tag." >> "$GITHUB_STEP_SUMMARY"

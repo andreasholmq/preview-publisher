@@ -78,9 +78,11 @@ replacement receipts remain available after a preview is deleted. Homelab reads
 the approved projection from the local database; it never derives publish usage
 from current preview stock. Failed receipt writes roll back metadata changes.
 
-Image publication uses the homelab shared OIDC release workflow after Go tests
-pass. GitHub has only non-secret identity/client IDs; scoped Zot publisher
-credentials live in `release-preview-publisher` in Infisical. Publication is
-separate from deployment: homelab pins the tested immutable SHA in Compose and
-Dokploy deploys that inventory-owned configuration. The shared workflow does
-not receive a Dokploy deployment credential for this publish-only caller.
+Image publication uses GitHub OIDC after Go tests pass. This public repository
+runs a publish-only workflow because it cannot invoke homelab's private reusable
+workflow. GitHub has only non-secret identity/client IDs; scoped Zot publisher
+credentials live in `release-preview-publisher` in Infisical. The OIDC identity is
+bound to this repository, its production environment, main ref and release
+workflow. Publication creates only the tested immutable SHA tag. Homelab pins
+that tag in Compose and Dokploy deploys its inventory-owned configuration. The
+publisher receives no Dokploy credential and does not advance a moving tag.
