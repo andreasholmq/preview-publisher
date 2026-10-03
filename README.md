@@ -77,3 +77,10 @@ contains no slug, title, URL, password or file content. Successful publish and
 replacement receipts remain available after a preview is deleted. Homelab reads
 the approved projection from the local database; it never derives publish usage
 from current preview stock. Failed receipt writes roll back metadata changes.
+
+Image publication uses the homelab shared OIDC release workflow after Go tests
+pass. GitHub has only non-secret identity/client IDs; scoped Zot publisher
+credentials live in `release-preview-publisher` in Infisical. Publication is
+separate from deployment: homelab pins the tested immutable SHA in Compose and
+Dokploy deploys that inventory-owned configuration. The shared workflow does
+not receive a Dokploy deployment credential for this publish-only caller.

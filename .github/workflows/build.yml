@@ -1,60 +1,34 @@
 name: Build
-
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-
 permissions:
   contents: read
-  packages: write
-
 jobs:
-  test-and-image:
+  test:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-go@v5
         with:
-          go-version: "1.26.0"
+          go-version: '1.26.0'
           cache: true
-
-      - name: Test
-        run: go test ./...
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Join Tailscale
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: tailscale/github-action@v3
-        with:
-          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
-
-      - name: Log in to Zot
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: docker/login-action@v3
-        with:
-          registry: zot.polecat-polaris.ts.net
-          username: ${{ secrets.ZOT_USERNAME }}
-          password: ${{ secrets.ZOT_PASSWORD }}
-
-      - name: Build image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: linux/amd64
-          load: true
-          tags: |
-            zot.polecat-polaris.ts.net/preview-publisher:main
-            zot.polecat-polaris.ts.net/preview-publisher:${{ github.sha }}
-
-      - name: Push image
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          docker push zot.polecat-polaris.ts.net/preview-publisher:main
-          docker push zot.polecat-polaris.ts.net/preview-publisher:${{ github.sha }}
+      - run: go test ./...
+  publish:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+    uses: andreasholmq/homelab/.github/workflows/publish-first-party-app.yml@main
+    with:
+      app-name: preview-publisher
+      source-sha: ${{ github.sha }}
+      dokploy-compose-id: zy25WpN3zG9QspfrQAYBn
+      infisical-identity-id: ${{ vars.INFISICAL_RELEASE_IDENTITY_ID }}
+      infisical-project-slug: release-preview-publisher
+      tailscale-client-id: ${{ vars.TAILSCALE_RELEASE_CLIENT_ID }}
+      tailscale-audience: ${{ vars.TAILSCALE_RELEASE_AUDIENCE }}
+      deploy: false
+      worker-required: false
