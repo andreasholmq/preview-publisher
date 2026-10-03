@@ -73,3 +73,31 @@ func TestFailedReceiptRollsBackMetadata(t *testing.T) {
 		t.Fatalf("metadata survived failed transaction %v %v", found, err)
 	}
 }
+
+func TestUsageBoundarySurvivesReopenAndDistinguishesReplacement(t *testing.T) {
+	path := t.TempDir()
+	read := func(path string) (string, string) {
+		d, err := Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer d.Close()
+		var identity, started string
+		if err := d.db.QueryRow(`SELECT identity,started_at FROM usage_state WHERE singleton=1`).Scan(&identity, &started); err != nil {
+			t.Fatal(err)
+		}
+		if len(identity) != 32 || started == "" {
+			t.Fatal("missing instrumentation boundary")
+		}
+		return identity, started
+	}
+	a, start := read(path)
+	b, reopen := read(path)
+	if a != b || start != reopen {
+		t.Fatal("reopen replaced durable boundary")
+	}
+	c, _ := read(t.TempDir())
+	if a == c {
+		t.Fatal("replacement database reused identity")
+	}
+}

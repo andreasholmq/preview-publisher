@@ -74,6 +74,13 @@ func appendUsage(ctx context.Context, tx *sql.Tx, action string, when time.Time)
 
 func migrate(db *sql.DB) error {
 	_, err := db.Exec(`
+create table if not exists usage_state (
+ singleton integer primary key check(singleton=1),
+ identity text not null,
+ started_at text not null
+);
+insert or ignore into usage_state(singleton,identity,started_at)
+ values(1,lower(hex(randomblob(16))),strftime('%Y-%m-%dT%H:%M:%fZ','now'));
 create table if not exists usage_outbox (
  seq integer primary key autoincrement,
  event_id text unique not null,
